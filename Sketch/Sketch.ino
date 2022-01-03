@@ -1,16 +1,16 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EEPROM.h>
+#include "AnotherIFTTTWebhook.h"
 
 
 String HTTP_METHOD = "GET";
 // "GET /trigger/SendMailPellets/with/key/iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX?value1=27 HTTP/1.1"
-String WebSocketHost = "maker.ifttt.com";
-String WebsocketURL  = "/trigger/SendMailPellets/with/key/iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX";
+// WebSocketHost "maker.ifttt.com";
+// WebsocketURL  "/trigger/SendMailPellets/with/key/iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX";
 
 
 EthernetClient client;
-EthernetClient Webclient;
 EthernetServer server(80);
 
 String HTTPRequest;
@@ -34,6 +34,18 @@ int Sensor2 = 0;
 bool Sensor1Reminder = false;
 bool Sensor2Reminder = false;
 
+
+
+
+
+
+void GetHTTPLocation (char *buf)
+{
+  IPAddress myIp= Ethernet.localIP();
+  sprintf(buf, "Location: http://%d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+  Serial.print (F("HTTPLocation: "));
+  Serial.println (buf);
+}
 
 
 void LoadSettings ()
@@ -62,6 +74,60 @@ void LoadSettings ()
 }
 
 
+void CheckSensor ()
+{
+
+    int Threshhold = GetThreshholdAsPercent ();
+
+    if (Sensor1 < Threshhold)
+    {
+      Serial.println (F("Sensor 1 Threshhold reached!"));
+      if (!Sensor1Reminder)
+      {
+        Serial.println (F("Sending Reminder!"));
+        SendMail ();
+        Sensor1Reminder = true;
+      }
+      else
+      {
+        Serial.println (F("Reminder already send!"));
+      }
+    }
+    else if (Sensor1 > Threshhold)
+    {
+      if (Sensor1Reminder)
+      {
+        Serial.println (F("Sensor 1 filled reset Reminder!"));
+        Sensor1Reminder = false;
+      }
+    }
+
+
+   if (Sensor2 < Threshhold)
+      {
+        Serial.println (F("Sensor 2 Threshhold reached!"));
+        if (!Sensor2Reminder)
+        {
+          Serial.println (F("Sending Reminder!"));
+          SendMail ();
+          Sensor1Reminder = true;
+        }
+        else
+        {
+          Serial.println (F("Reminder already send!"));
+        }
+      }
+      else if (Sensor2 > Threshhold)
+      {
+        if (Sensor2Reminder)
+        {
+          Serial.println (F("Sensor 2 filled reset Reminder!"));
+          Sensor2Reminder = false;
+        }
+      }
+}
+
+
 void ReadSensors ()
 {
     //Sensor 1
@@ -83,7 +149,7 @@ void ReadSensors ()
     MinValueBit =  float(1023 / 5) * MySettings.MinValue;
     Range = MaxValueBit - MinValueBit;
     
-    int Sensor2Value = analogRead (A0);
+    int Sensor2Value = analogRead (A1);
 
 
     Sensor2Value = Sensor2Value - MinValueBit; 
@@ -95,35 +161,18 @@ void ReadSensors ()
 
 }
 
-void SendMail (int Value1, int Value2)
+void SendMail ()
 {
-    IPAddress ip;
-    ip = ip.fromString(WebSocketHost);
 
-    if ( Webclient.connect(ip,80)) {
-    // if connected:
-    Serial.println(F("Connected to server"));
-    // make a HTTP request:
-    // send HTTP header
-    Webclient.println(HTTP_METHOD + " " + WebsocketURL + "?value1=" + Value1 + "&value2=" + Value2 + " HTTP/1.1");
-    Webclient.println("Host: " + String(WebSocketHost));
-    Webclient.println(F("Connection: close"));
-    Webclient.println(); // end HTTP header
 
-    while (Webclient.connected()) {
-      if (Webclient.available()) {
-        // read an incoming byte from the server and print it to serial monitor:
-        char c = Webclient.read();
-        Serial.print(c);
-      }
-    }
+  char Sensor1Char[5];  
+  char Sensor2Char[5];  
 
-    // the server's disconnected, stop the client:
-    Webclient.stop();
-    Serial.println(F("disconnected"));
-  } else {// if not connected:
-    Serial.println(F("connection failed"));
-  }
+  sprintf(Sensor1Char,"%i",Sensor1);
+  sprintf(Sensor2Char,"%i",Sensor2);
+  send_webhook("SendMailPellets","iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX",Sensor1Char,Sensor2Char,"value 3");
+
+
 }
 
 void SendHTTPResponseHeader(int Refresh)
@@ -150,6 +199,16 @@ void WriteHTMLBodyBegin ()
   client.println(F("<body>"));
 }
 
+int GetThreshholdAsPercent ()
+{
+    int MaxValueBit = float(1023 / 5) * MySettings.MaxValue;
+    int MinValueBit =  float(1023 / 5) * MySettings.MinValue;
+    int SensorThreshholdBit = float(1023 / 5)* MySettings.SensorThreshhold;
+    int Range = MaxValueBit - MinValueBit;
+    int SensorThreshholdValuePercent = (float)SensorThreshholdBit/Range*100;
+    return SensorThreshholdValuePercent;
+}
+
 
 void WriteIndexHTML ()
 {
@@ -173,7 +232,25 @@ void WriteIndexHTML ()
      client.println(F("<script>"));
      client.println(F("var xValues = [\"Behälter 1\", \"Behälter 2\"];"));
      client.println("var yValues = [" + (String)Sensor1 + ", " + (String)Sensor2 + "];");
-     client.println(F("var barColors = [ \"green\",\"blue\"];"));
+
+
+    int SensorThreshholdValuePercent = GetThreshholdAsPercent();
+     if (Sensor1 < SensorThreshholdValuePercent && Sensor2 > SensorThreshholdValuePercent)
+     {
+           client.println(F("var barColors = [ \"red\",\"green\"];"));
+     }
+     else if (Sensor1 > SensorThreshholdValuePercent && Sensor2 < SensorThreshholdValuePercent)
+     {
+        client.println(F("var barColors = [ \"green\",\"red\"];"));
+     }
+     else if (Sensor1 < SensorThreshholdValuePercent && Sensor2 < SensorThreshholdValuePercent)
+     {
+        client.println(F("var barColors = [ \"red\",\"red\"];"));
+     }
+     else
+     {
+        client.println(F("var barColors = [ \"green\",\"green\"];"));
+     }
      client.println(F("new Chart(\"myChart\", {"));
      client.println(F("type: \"bar\","));
      client.println(F("data: {"));
@@ -210,13 +287,7 @@ void WriteIndexHTML ()
      client.println(F("</html>"));
 }
 
-String DisplayAddress(IPAddress address)
-{
- return String(address[0]) + "." + 
-        String(address[1]) + "." + 
-        String(address[2]) + "." + 
-        String(address[3]);
-}
+
 
 void  GetSettingsfromHTTPRequest()
 {
@@ -268,12 +339,11 @@ void  GetSettingsfromHTTPRequest()
     Serial.println (F("Input Set")); 
   }
 
-  Serial.println (F("HTTP/1.1 301 Moved Permanently"));
-  char buffer [15];
-  sprintf(buffer,"%s",Ethernet.localIP());
-  String IP = buffer;
-  Serial.println (IP);
-  Serial.println ("Location: http://" + IP);
+  client.println (F("HTTP/1.1 303 See Other"));
+  char HTTPLocation[30];
+  GetHTTPLocation(HTTPLocation);
+  client.println (HTTPLocation);
+  
   
 
 
@@ -315,7 +385,7 @@ void WriteSettingsHTML ()
     client.println(F("</table>"));
     client.println(F("<button type=\"submit\" class=\"btn btn-primary\">Bestätigen</button>"));
     client.println(F("</form>"));
-    client.println (F("<p><a href=\"/Settings/Reset\" class=\"link-secondary\">Reset</a></p>"));
+    client.println (F("<p><a href=\"/Reset\" class=\"link-secondary\">Reset</a></p>"));
   
      client.println(F("</body>"));
      client.println(F("</html>"));
@@ -328,28 +398,28 @@ void HandleServer ()
   if (client) {
     Serial.println(F("new client"));
 
-    boolean currentLineIsBlank = true;
+
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
         HTTPRequest += c;
 
         
-        if (c == '\n' && currentLineIsBlank) {
+        if (c == '\n')
+        {
       
-      
-Serial.println (HTTPRequest);
-          
+
+
 
           if (HTTPRequest.indexOf("GET /Settings?") >= 0)
           {
-            Serial.println (HTTPRequest);
+            Serial.print (HTTPRequest);
             Serial.println (F("Set Settings"));
             GetSettingsfromHTTPRequest();
           }
-          else if (HTTPRequest.indexOf("GET /Settings/Reset") >= 0) 
+          else if (HTTPRequest.indexOf("GET /Reset") >= 0) 
           {
-              
+              Serial.print (HTTPRequest);
               Serial.println(F("Reset Settings"));
               Settings NewSettings;
               MySettings.MaxValue = NewSettings.MaxValue;
@@ -357,12 +427,14 @@ Serial.println (HTTPRequest);
               MySettings.SensorThreshhold =NewSettings.SensorThreshhold;
               EEPROM.put(0,MySettings);
 
-              client.println (F("HTTP/1.1 301 Moved Permanently"));
-              client.println ("Location: http://" + DisplayAddress(Ethernet.localIP()) + "/Settings");
+              client.println (F("HTTP/1.1 303 See Other"));
+              char HTTPLocation[30];
+              GetHTTPLocation(HTTPLocation);
+              client.println (HTTPLocation);
           }
           else if (HTTPRequest.indexOf("GET /Settings") >= 0) 
           {
-               Serial.println (HTTPRequest);
+               Serial.print (HTTPRequest);
                Serial.println(F("Show Settings"));
                SendHTTPResponseHeader(60);
                WriteHTMLBodyBegin();
@@ -375,36 +447,19 @@ Serial.println (HTTPRequest);
 
           }
 
-          else
+          else if (HTTPRequest.indexOf("GET") >= 0) 
           {
-              Serial.println (HTTPRequest);
+              Serial.print (HTTPRequest);
               Serial.println(F("Show Index"));
              SendHTTPResponseHeader(5);
              WriteHTMLBodyBegin();
              WriteIndexHTML ();
           }
-
-
-         
- 
-       
-           
-
-
-
-
-          
+          HTTPRequest = "";
           break;
-
-          
+  
         }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-        } else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
+        
       }
     }
     // give the web browser time to receive the data
@@ -417,6 +472,7 @@ Serial.println (HTTPRequest);
 
   delay (500);
 }
+
 
 
 
@@ -452,9 +508,14 @@ void setup() {
 
 
 void loop() {
+  
 
   ReadSensors ();
+
+  CheckSensor ();
+
   HandleServer();
+  delay (1000);
   
  
 }
