@@ -94,11 +94,32 @@ void send_webhook(char *MakerIFTTT_Event, char *MakerIFTTT_Key, char *value1, ch
     content_length_here[0] = '0' + (i/10);
     content_length_here[1] = '0' + (i%10);
 
-    // finally we are ready to send the POST to the server!
+    //Serial.println(post_rqst);
+
+   if (Webclient.connect("maker.ifttt.com", 80)) {
+    Serial.println("connected");
     Webclient.print(post_rqst);
 
+    delay (500);
+    
+    char c = 0;
+    while (c != -1)
+    {
+      c = Webclient.read();
+     // Serial.print (c);
+    }
 
 
     Webclient.stop();
+  
+  } else {
+    Serial.println("connection failed");
+  }
+    
+
+
+
+
+    
     
 }

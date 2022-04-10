@@ -2,12 +2,11 @@
 #include <Ethernet.h>
 #include <EEPROM.h>
 #include "AnotherIFTTTWebhook.h"
+#include <afstandssensor.h>
+#include <avr/wdt.h>
 
-
-String HTTP_METHOD = "GET";
-// "GET /trigger/SendMailPellets/with/key/iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX?value1=27 HTTP/1.1"
-// WebSocketHost "maker.ifttt.com";
-// WebsocketURL  "/trigger/SendMailPellets/with/key/iS_O3iLLBtJTqHtGIv0UXdamgY3gp-WjrcefedBARAX";
+AfstandsSensor afstandssensor1(14, 16);
+AfstandsSensor afstandssensor2(15, 17);
 
 
 EthernetClient client;
@@ -18,9 +17,9 @@ String HTTPRequest;
 
 struct Settings
 {
-  float MaxValue = 2.75f;
-  float MinValue = 0.5f;
-  float SensorThreshhold = 0.75f;
+  int MinValue = 110;
+  int MaxValue = 70;
+  int SensorThreshhold = 90;
  
 };
 
@@ -51,7 +50,7 @@ void GetHTTPLocation (char *buf)
 void LoadSettings ()
 {
   Serial.println (F("Loading Settings"));
-// EEPROM.put (0,MySettings);
+  //EEPROM.put (0,MySettings);
   
   EEPROM.get(0, MySettings);
 
@@ -64,11 +63,11 @@ void LoadSettings ()
   }
   
   Serial.print (F("MaxValue: "));
-  Serial.print (MySettings.MaxValue,2);
+  Serial.print (MySettings.MaxValue);
   Serial.print (F(" MinValue: "));
-  Serial.print (MySettings.MinValue,2);
+  Serial.print (MySettings.MinValue);
   Serial.print (F(" SensorThreshhold: "));
-  Serial.print (MySettings.SensorThreshhold,2);
+  Serial.print (MySettings.SensorThreshhold);
   Serial.print(F("\n"));
  
 }
@@ -79,9 +78,10 @@ void CheckSensor ()
 
     int Threshhold = GetThreshholdAsPercent ();
 
+
     if (Sensor1 < Threshhold)
     {
-      Serial.println (F("Sensor 1 Threshhold reached!"));
+      
       if (!Sensor1Reminder)
       {
         Serial.println (F("Sending Reminder!"));
@@ -90,7 +90,7 @@ void CheckSensor ()
       }
       else
       {
-        Serial.println (F("Reminder already send!"));
+        
       }
     }
     else if (Sensor1 > Threshhold)
@@ -105,16 +105,16 @@ void CheckSensor ()
 
    if (Sensor2 < Threshhold)
       {
-        Serial.println (F("Sensor 2 Threshhold reached!"));
+       
         if (!Sensor2Reminder)
         {
           Serial.println (F("Sending Reminder!"));
           SendMail ();
-          Sensor1Reminder = true;
+          Sensor2Reminder = true;
         }
         else
         {
-          Serial.println (F("Reminder already send!"));
+         
         }
       }
       else if (Sensor2 > Threshhold)
@@ -131,32 +131,50 @@ void CheckSensor ()
 void ReadSensors ()
 {
     //Sensor 1
-    int MaxValueBit = float(1023 / 5) * MySettings.MaxValue;
-    int MinValueBit =  float(1023 / 5) * MySettings.MinValue;
-    int Range = MaxValueBit - MinValueBit;
+    int MaxValue = MySettings.MaxValue;
+    int MinValue = MySettings.MinValue;
+    int Range =  MinValue - MaxValue;
     
-    int Sensor1Value = analogRead (A0);
+    int Sensor1Value = afstandssensor1.afstandCM();
+    if (Sensor1Value == -1)
+    {
+      Serial.println ("Sensor 1 not found!");
+    }
+    else
+    {
 
-    Sensor1Value = Sensor1Value - MinValueBit; 
-    float Sensor1ValuePercent = (float)Sensor1Value/Range*100;
-    Sensor1 = Sensor1ValuePercent;
-
-
-
+      Serial.print ("Sensor 1 in CM: ");
+      Serial.print (Sensor1Value);
+      Serial.print("\n");
+  
+      Sensor1Value =  MinValue - Sensor1Value; 
+      float Sensor1ValuePercent = (float)Sensor1Value/Range*100;
+      Sensor1 = Sensor1ValuePercent;
+    }
 
     //Sensor 2
-    MaxValueBit = float(1023 / 5) * MySettings.MaxValue;
-    MinValueBit =  float(1023 / 5) * MySettings.MinValue;
-    Range = MaxValueBit - MinValueBit;
+    int Sensor2Value = afstandssensor2.afstandCM();
+
+    if (Sensor2Value == -1)
+    {
+      Serial.println ("Sensor 2 not found!");
+    }
+    else
+    {
+      
     
-    int Sensor2Value = analogRead (A1);
-
-
-    Sensor2Value = Sensor2Value - MinValueBit; 
-    float Sensor2ValuePercent = (float)Sensor2Value/Range*100;
-    Sensor2 = Sensor2ValuePercent;
 
   
+      Sensor2Value =  MinValue - Sensor2Value; 
+      float Sensor2ValuePercent = (float)Sensor2Value/Range*100;
+      Sensor2 = Sensor2ValuePercent;
+
+    }
+    Serial.print ("Sensor 1 in %: ");
+    Serial.print (Sensor1);
+    Serial.print("\n");
+
+
     
 
 }
@@ -164,9 +182,13 @@ void ReadSensors ()
 void SendMail ()
 {
 
-
-  char Sensor1Char[5];  
+  String S1 = String(Sensor1);
+  String S2 = String(Sensor2);
+  
+  char Sensor1Char[5];
+  S1.toCharArray(Sensor1Char,5);
   char Sensor2Char[5];  
+  S2.toCharArray(Sensor2Char,5);
 
   sprintf(Sensor1Char,"%i",Sensor1);
   sprintf(Sensor2Char,"%i",Sensor2);
@@ -201,11 +223,11 @@ void WriteHTMLBodyBegin ()
 
 int GetThreshholdAsPercent ()
 {
-    int MaxValueBit = float(1023 / 5) * MySettings.MaxValue;
-    int MinValueBit =  float(1023 / 5) * MySettings.MinValue;
-    int SensorThreshholdBit = float(1023 / 5)* MySettings.SensorThreshhold;
-    int Range = MaxValueBit - MinValueBit;
-    int SensorThreshholdValuePercent = (float)SensorThreshholdBit/Range*100;
+    int MaxValue =  MySettings.MaxValue;
+    int MinValue =  MySettings.MinValue;
+    int SensorThreshhold =  MySettings.SensorThreshhold;
+        
+    int SensorThreshholdValuePercent = (float)SensorThreshhold/MinValue*100;
     return SensorThreshholdValuePercent;
 }
 
@@ -313,9 +335,9 @@ void  GetSettingsfromHTTPRequest()
 
 
 
-  float tempMaxValue = MaxString.toFloat();
-  float tempMinValue = MinString.toFloat();
-  float tempSensorThreshhold =  ThreshString.toFloat();
+  int tempMaxValue = MaxString.toInt();
+  int tempMinValue = MinString.toInt();
+  int tempSensorThreshhold =  ThreshString.toInt();
   
   Serial.print (F("MaxString: "));
   Serial.println (tempMaxValue);
@@ -324,9 +346,10 @@ void  GetSettingsfromHTTPRequest()
   Serial.print (F("ThreshString: "));
   Serial.println (tempSensorThreshhold);
   
-  if (tempMaxValue <= 0 || tempMaxValue > 5 || tempMinValue <= 0 || tempMaxValue > 5 || tempSensorThreshhold <= 0 || tempSensorThreshhold > 5 )
+  if (tempMaxValue <= 2 || tempMaxValue > 450 || tempMinValue <= 2 || tempMaxValue > 450 || tempSensorThreshhold <= 2 || tempSensorThreshhold > 450 )
   {
-    Serial.print (F("Input not valid!")); 
+    Serial.print (F("Input not valid!\n")); 
+    Serial.print (F("Chose Range from 2 - 450\n")); 
   }
   else
   {
@@ -487,18 +510,27 @@ byte mac[] = {
 void setup() {
 
  //Init 
-  Ethernet.init(10);
   Serial.begin(9600);
+  // Init Watchdog 4 s
+  wdt_enable(WDTO_4S);
   LoadSettings();
   
   Ethernet.begin(mac);
+
+  // Check for Ethernet hardware present
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
+    while (true) {
+      delay(1); // do nothing, no point running without Ethernet hardware
+    }
+  }
   if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println(F("Ethernet cable is not connected."));
+    Serial.println("Ethernet cable is not connected.");
   }
 
-  
+  // start the server
   server.begin();
-  Serial.print(F("server is at "));
+  Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
 
 
@@ -508,7 +540,9 @@ void setup() {
 
 
 void loop() {
-  
+
+  //Reset Watchdog 
+  wdt_reset();
 
   ReadSensors ();
 
