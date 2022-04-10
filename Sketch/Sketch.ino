@@ -17,8 +17,8 @@ String HTTPRequest;
 
 struct Settings
 {
-  int MinValue = 110;
-  int MaxValue = 70;
+  int MinValue = 110;   
+  int MaxValue = 65;
   int SensorThreshhold = 90;
  
 };
@@ -143,13 +143,24 @@ void ReadSensors ()
     else
     {
 
-      Serial.print ("Sensor 1 in CM: ");
-      Serial.print (Sensor1Value);
-      Serial.print("\n");
-  
-      Sensor1Value =  MinValue - Sensor1Value; 
-      float Sensor1ValuePercent = (float)Sensor1Value/Range*100;
-      Sensor1 = Sensor1ValuePercent;
+              Serial.print ("Sensor 1 in CM: ");
+        Serial.print (Sensor1Value);
+        Serial.print("\n");
+      
+      if (Sensor1Value > MinValue || Sensor1Value < MaxValue)
+      {
+        Serial.println ("Sensor 1 Value out of Range !");
+      }
+      else
+      {
+
+
+    
+        Sensor1Value =  Sensor1Value - MinValue; 
+        Sensor1Value = Sensor1Value * -1;
+        float Sensor1ValuePercent = (float)Sensor1Value/Range*100;
+        Sensor1 = Sensor1ValuePercent;
+      }
     }
 
     //Sensor 2
@@ -161,14 +172,18 @@ void ReadSensors ()
     }
     else
     {
-      
-    
 
-  
-      Sensor2Value =  MinValue - Sensor2Value; 
-      float Sensor2ValuePercent = (float)Sensor2Value/Range*100;
-      Sensor2 = Sensor2ValuePercent;
-
+      if (Sensor2Value > MinValue || Sensor2Value < MaxValue)
+      {
+        Serial.println ("Sensor 2 Value out of Range !");
+      }
+      else
+      {
+        Sensor2Value =  Sensor2Value - MinValue; 
+        Sensor2Value = Sensor2Value *-1;
+        float Sensor2ValuePercent = (float)Sensor2Value/Range*100;
+        Sensor2 = Sensor2ValuePercent;
+      }
     }
     Serial.print ("Sensor 1 in %: ");
     Serial.print (Sensor1);
@@ -511,8 +526,7 @@ void setup() {
 
  //Init 
   Serial.begin(9600);
-  // Init Watchdog 4 s
-  wdt_enable(WDTO_4S);
+
   LoadSettings();
   
   Ethernet.begin(mac);
@@ -534,7 +548,8 @@ void setup() {
   Serial.println(Ethernet.localIP());
 
 
-
+  // Init Watchdog 4 s
+  wdt_enable(WDTO_4S);
   
 }
 
